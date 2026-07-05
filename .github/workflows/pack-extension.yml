@@ -22,13 +22,15 @@ jobs:
       - name: Install web-ext
         run: npm install -g web-ext
 
-      - name: Build and Pack Extension
+      - name: Lint Extension
         run: |
           cd firefox-extension
-          web-ext build --filename="otosu-extension-{version}.zip"
+          web-ext lint
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firefox-extension-zip
-          path: firefox-extension/web-ext-artifacts/otosu-extension-*.zip
+          name: otosu-extension
+          path: |
+            firefox-extension/background.js
+            firefox-extension/manifest.json
