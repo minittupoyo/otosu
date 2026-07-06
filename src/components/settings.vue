@@ -19,11 +19,47 @@ interface ProfileInfo {
     is_default: boolean;
 }
 
+interface YtDlpVersionInfo {
+    current: string | null;
+    latest: string | null;
+    update_available: boolean;
+}
+
 const isOpen = ref(false);
 
 const firefoxProfiles = ref<ProfileInfo[]>([]);
 const floorpProfiles = ref<ProfileInfo[]>([]);
 const zenProfiles = ref<ProfileInfo[]>([]);
+
+const ytDlpInfo = ref<YtDlpVersionInfo | null>(null);
+const checkingYtDlpVersion = ref(false);
+const updatingYtDlp = ref(false);
+const ytDlpError = ref<string | null>(null);
+
+const checkYtDlpVersion = async () => {
+    checkingYtDlpVersion.value = true;
+    ytDlpError.value = null;
+    try {
+        ytDlpInfo.value = await invoke<YtDlpVersionInfo>('check_yt_dlp_version');
+    } catch (err) {
+        ytDlpError.value = String(err);
+    } finally {
+        checkingYtDlpVersion.value = false;
+    }
+};
+
+const updateYtDlp = async () => {
+    updatingYtDlp.value = true;
+    ytDlpError.value = null;
+    try {
+        const version = await invoke<string>('update_yt_dlp');
+        ytDlpInfo.value = { current: version, latest: version, update_available: false };
+    } catch (err) {
+        ytDlpError.value = String(err);
+    } finally {
+        updatingYtDlp.value = false;
+    }
+};
 
 const loadAllProfiles = async () => {
     try {
@@ -80,6 +116,7 @@ const handleReset = () => {
 watch(isOpen, (newVal) => {
     if (newVal) {
         loadAllProfiles();
+        checkYtDlpVersion();
     }
 });
 
@@ -105,6 +142,33 @@ onMounted(() => {
             </DialogHeader>
 
             <div class="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                <!-- yt-dlp Version -->
+                <div class="flex flex-col gap-3">
+                    <h3 class="text-sm font-semibold">yt-dlp</h3>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="text-xs text-muted-foreground">
+                            <span v-if="checkingYtDlpVersion">確認中...</span>
+                            <span v-else-if="ytDlpInfo?.current">現在のバージョン: {{ ytDlpInfo.current }}</span>
+                            <span v-else>バージョンを取得できませんでした</span>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" :disabled="checkingYtDlpVersion" @click="checkYtDlpVersion">
+                            更新を確認
+                        </Button>
+                    </div>
+                    <div v-if="ytDlpInfo?.update_available" class="flex items-center justify-between gap-2 text-xs bg-primary/5 border border-primary/20 rounded-sm p-2">
+                        <span>新しいバージョン ({{ ytDlpInfo.latest }}) があります</span>
+                        <Button type="button" size="sm" :disabled="updatingYtDlp" @click="updateYtDlp">
+                            {{ updatingYtDlp ? '更新中...' : '更新する' }}
+                        </Button>
+                    </div>
+                    <div v-else-if="ytDlpInfo?.current && !ytDlpInfo.update_available" class="text-xs text-muted-foreground">
+                        最新版です
+                    </div>
+                    <div v-if="ytDlpError" class="text-xs text-destructive">{{ ytDlpError }}</div>
+                </div>
+
+                <Separator />
+
                 <!-- Cookie Settings -->
                 <div class="flex flex-col gap-3">
                     <h3 class="text-sm font-semibold">Cookie インポート設定</h3>

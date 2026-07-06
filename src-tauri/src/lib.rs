@@ -159,6 +159,59 @@ async fn install_yt_dlp(app_handle: &tauri::AppHandle) -> Result<PathBuf, String
     Ok(destination)
 }
 
+#[derive(Deserialize)]
+struct GitHubReleaseResponse {
+    tag_name: String,
+}
+
+async fn fetch_latest_yt_dlp_version() -> Result<String, String> {
+    let response = reqwest::Client::new()
+        .get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        .header("User-Agent", "otosu-app")
+        .send()
+        .await
+        .map_err(|error| format!("最新バージョンの取得に失敗しました: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("最新バージョンの取得に失敗しました: {error}"))?;
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("最新バージョン情報の取得に失敗しました: {error}"))?;
+    let release: GitHubReleaseResponse = serde_json::from_str(&body)
+        .map_err(|error| format!("最新バージョン情報の解析に失敗しました: {error}"))?;
+    Ok(release.tag_name)
+}
+
+#[derive(Serialize)]
+struct YtDlpVersionInfo {
+    current: Option<String>,
+    latest: Option<String>,
+    update_available: bool,
+}
+
+#[tauri::command]
+async fn check_yt_dlp_version(app_handle: tauri::AppHandle) -> Result<YtDlpVersionInfo, String> {
+    let current = match resolve_yt_dlp(&app_handle).await {
+        Ok(path) => executable_version(&app_handle, path, "--version").await,
+        Err(_) => None,
+    };
+    let latest = fetch_latest_yt_dlp_version().await?;
+    let update_available = current.as_deref() != Some(latest.as_str());
+    Ok(YtDlpVersionInfo {
+        current,
+        latest: Some(latest),
+        update_available,
+    })
+}
+
+#[tauri::command]
+async fn update_yt_dlp(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let path = install_yt_dlp(&app_handle).await?;
+    executable_version(&app_handle, path, "--version")
+        .await
+        .ok_or_else(|| "更新後のバージョン確認に失敗しました".to_string())
+}
+
 fn deno_version_is_supported(version: &str) -> bool {
     let Some(number) = version.split_whitespace().nth(1) else {
         return false;
@@ -869,7 +922,9 @@ pub fn run() {
             setup_dependencies,
             fetch_video_info,
             start_download,
-            get_browser_profiles
+            get_browser_profiles,
+            check_yt_dlp_version,
+            update_yt_dlp
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
